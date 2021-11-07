@@ -48,18 +48,19 @@ pub fn build(b: *std.build.Builder) void {
         const android_env = getAndroidEnvFromEnvVars(b);
 
         // BUILD SDL FOR ANDROID
-        const sdl_android = android.buildSdlForAndroidStep(b, &android_env);
+        const sdl_android = android.buildSdlForAndroidStep(b, &android_env, );
         const build_sdl_android = b.step("sdl-android", "Build SDL for android using the Android SDK");
         build_sdl_android.dependOn(sdl_android);
 
         // BUILD ANDROID
-        const lib = buildAndroidMainLibraries(b, &android_env, mode);
-        const build_lib = b.step("android", "Build the main android library");
-        build_lib.dependOn(lib);
+        const libs = buildAndroidMainLibraries(b, &android_env, mode);
+        const build_libs = b.step("android", "Build the main android library");
+        for (libs.items) |lib| {
+            build_libs.dependOn(&lib.step.step);
+        }
 
         // BUILD APK
-        const apk = android.buildApkStep(b, &android_env);
-        apk.dependOn(lib);
+        const apk = android.buildApkStep(b, &android_env, libs.items);
         const build_apk = b.step("apk", "Build the android apk (debug)");
         build_apk.dependOn(apk);
     }
@@ -86,13 +87,13 @@ pub fn buildAndroidMainLibraries(
     builder: *std.build.Builder,
     android_env: *const android.AndroidEnv,
     mode: std.builtin.Mode,
-) *std.build.Step {
+) std.ArrayList(android.AndroidMainLib) {
     comptime var all_targets : [@typeInfo(android.AndroidTarget).Enum.fields.len]android.AndroidTarget = undefined;
     inline for (@typeInfo(android.AndroidTarget).Enum.fields) |field, i| {
         all_targets[i] = @intToEnum(android.AndroidTarget, field.value);
     }
 
-    var last_step : ?*std.build.Step = null;
+    var libs = std.ArrayList(android.AndroidMainLib).initCapacity(builder.allocator, 4) catch unreachable;
     for (all_targets) |target| {
         switch (target) {
             // compiling android apps to arm not supported right now. see: https://github.com/ziglang/zig/issues/8885
@@ -103,13 +104,13 @@ pub fn buildAndroidMainLibraries(
         }
 
         const step = buildAndroidMainLibrary(builder, android_env, mode, target);
-        if (last_step) |s| {
-            step.dependOn(s);
-        }
-        last_step = step;
+        libs.append(.{
+            .target = target,
+            .step = step,
+        }) catch unreachable;
     }
 
-    return last_step.?;
+    return libs;
 }
 
 pub fn buildAndroidMainLibrary(
@@ -117,7 +118,7 @@ pub fn buildAndroidMainLibrary(
     android_env: *const android.AndroidEnv,
     mode: std.builtin.Mode,
     target: android.AndroidTarget,
-) *std.build.Step {
+) *std.build.LibExeObjStep {
     const lib = builder.addSharedLibrary("main", "src/android_main.zig", .unversioned);
 
     lib.force_pic = true;
@@ -228,9 +229,6 @@ pub fn buildAndroidMainLibrary(
 
     lib.setLibCFile(config.libc_file);
 
-    //lib.setOutputDir("ops");
-    lib.install();
-
-    return &lib.step;
+    return lib;
 }
 

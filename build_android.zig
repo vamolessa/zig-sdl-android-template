@@ -27,6 +27,11 @@ pub const AndroidTarget = enum {
     }
 };
 
+pub const AndroidMainLib = struct {
+    target: AndroidTarget,
+    step: *std.build.LibExeObjStep,
+};
+
 pub fn buildSdlForAndroidStep(builder: *std.build.Builder, env: *const AndroidEnv) *std.build.Step {
     // this step will build SDL for all enabled ABIs
     // it's best for this step remain separated in order to keep the output cached
@@ -49,12 +54,12 @@ pub fn buildSdlForAndroidStep(builder: *std.build.Builder, env: *const AndroidEn
     });
     // the process needs to execute from the jni folder in order to
     // correctly find the jni project files Application.mk and Android.mk
-    ndk_build_command.cwd = ANDROID_PROJECT_PATH ++ "/jni";
+    ndk_build_command.cwd = builder.pathFromRoot(ANDROID_PROJECT_PATH ++ "/jni");
 
     return &ndk_build_command.step;
 }
 
-pub fn buildApkStep(builder: *std.build.Builder, env: *const AndroidEnv) *std.build.Step {
+pub fn buildApkStep(builder: *std.build.Builder, env: *const AndroidEnv, main_libs: []const AndroidMainLib) *std.build.Step {
     // this step will create a signed and aligned apk from
     // - your android project
     // - your debug keystore
@@ -133,7 +138,7 @@ pub fn buildApkStep(builder: *std.build.Builder, env: *const AndroidEnv) *std.bu
     javac_argv.append("-sourcepath") catch unreachable;
     javac_argv.append("java:out") catch unreachable;
     {
-        var it = std.fs.walkPath(builder.allocator, ANDROID_PROJECT_PATH ++ "/java") catch unreachable;
+        var it = std.fs.walkPath(builder.allocator, builder.pathFromRoot(ANDROID_PROJECT_PATH ++ "/java")) catch unreachable;
         defer it.deinit();
         while (it.next() catch unreachable) |entry| {
             if (entry.kind == .File and std.mem.endsWith(u8, entry.path, ".java")) {
@@ -177,7 +182,11 @@ pub fn buildApkStep(builder: *std.build.Builder, env: *const AndroidEnv) *std.bu
     var copy_sdl_libs_log = builder.addLog("copying all compiled SDL libraries to `out/lib/<target>`", .{});
     copy_sdl_libs_log.step.dependOn(&create_apk_command.step);
     const copy_sdl_libs = builder.allocator.create(CopyDirStep) catch unreachable;
-    copy_sdl_libs.* = CopyDirStep.init(builder, ANDROID_PROJECT_PATH ++ "/ndk-out/lib", ANDROID_PROJECT_PATH ++ "/out/lib");
+    copy_sdl_libs.* = CopyDirStep.init(
+        builder,
+        ANDROID_PROJECT_PATH ++ "/ndk-out/lib",
+        ANDROID_PROJECT_PATH ++ "/out/lib",
+    );
     copy_sdl_libs.step.dependOn(&copy_sdl_libs_log.step);
 
     var copy_zig_libs_log = builder.addLog(
@@ -186,16 +195,11 @@ pub fn buildApkStep(builder: *std.build.Builder, env: *const AndroidEnv) *std.bu
     );
     copy_zig_libs_log.step.dependOn(&copy_sdl_libs.step);
 
-    comptime var all_targets : [@typeInfo(AndroidTarget).Enum.fields.len]AndroidTarget = undefined;
-    inline for (@typeInfo(AndroidTarget).Enum.fields) |field, i| {
-        all_targets[i] = @intToEnum(AndroidTarget, field.value);
-    }
-
     var last_copy_step = &copy_zig_libs_log.step;
-    for (all_targets) |target| {
+    for (main_libs) |main_lib| {
         const target_lib_dir = std.fs.path.resolve(
             builder.allocator,
-            &[_][]const u8{ builder.lib_dir, target.name() },
+            &[_][]const u8{ builder.lib_dir, main_lib.target.name() },
         ) catch unreachable;
 
         const copy_zig_libs = builder.allocator.create(CopyDirStep) catch unreachable;
@@ -204,7 +208,6 @@ pub fn buildApkStep(builder: *std.build.Builder, env: *const AndroidEnv) *std.bu
             target_lib_dir,
             ANDROID_PROJECT_PATH ++ "/out/lib",
         );
-        copy_zig_libs.ignore_if_source_does_not_exist = true;
         copy_zig_libs.step.dependOn(last_copy_step);
         last_copy_step = &copy_zig_libs.step;
     }
@@ -257,7 +260,7 @@ pub fn buildApkStep(builder: *std.build.Builder, env: *const AndroidEnv) *std.bu
 
 fn addCommand(builder: *std.build.Builder, argv: []const []const u8) *std.build.RunStep {
     var command = builder.addSystemCommand(argv);
-    command.cwd = ANDROID_PROJECT_PATH;
+    command.cwd = builder.pathFromRoot(ANDROID_PROJECT_PATH);
     return command;
 }
 
@@ -282,20 +285,38 @@ const CleanStep = struct {
     }
 };
 
+const CopyLibStep = struct {
+    step: std.build.Step,
+    builder: *std.build.Builder,
+    lib: *std.build.LibExeObjStep,
+    dest: []const u8,
+
+    pub fn init(builder: *std.build.Builder, lib: *std.build.LibExeObjStep, dest: []const u8) CopyLibStep {
+        return CopyLibStep {
+            .builder = builder,
+            .step = std.build.Step.init(.Custom, builder.fmt("copying to {s}", .{dest}), builder.allocator, make),
+            .lib = lib,
+            .dest = dest,
+        };
+    }
+
+    fn make(step: *std.build.Ste) !void {
+        const self = @fieldParentPtr(CopyLibStep, "step", step);
+    }
+};
+
 const CopyDirStep = struct {
     step: std.build.Step,
     builder: *std.build.Builder,
     source: []const u8,
     dest: []const u8,
-    ignore_if_source_does_not_exist: bool,
 
     pub fn init(builder: *std.build.Builder, source: []const u8, dest: []const u8) CopyDirStep {
         return CopyDirStep{
             .builder = builder,
-            .step = std.build.Step.init(.InstallDir, builder.fmt("copying {s} to {s}", .{source, dest}), builder.allocator, make),
+            .step = std.build.Step.init(.Custom, builder.fmt("copying {s} to {s}", .{source, dest}), builder.allocator, make),
             .source = builder.dupe(source),
             .dest = builder.dupe(dest),
-            .ignore_if_source_does_not_exist = false,
         };
     }
 
@@ -305,14 +326,7 @@ const CopyDirStep = struct {
         const source = self.builder.pathFromRoot(self.source);
         const dest = self.builder.pathFromRoot(self.dest);
 
-        var it = std.fs.walkPath(self.builder.allocator, source) catch |err| {
-            if (self.ignore_if_source_does_not_exist) {
-                return;
-            } else {
-                return err;
-            }
-        };
-
+        var it = try std.fs.walkPath(self.builder.allocator, source);
         while (try it.next()) |entry| {
             const rel_path = entry.path[source.len + 1 ..];
             const dest_path = try std.fs.path.join(self.builder.allocator, &[_][]const u8{dest, rel_path});
@@ -342,8 +356,9 @@ const AddLibsToApkStep = struct {
     fn make(step: *std.build.Step) !void {
         const self = @fieldParentPtr(AddLibsToApkStep, "step", step);
 
-        const cwd = ANDROID_PROJECT_PATH ++ "/out";
-        var it = try std.fs.walkPath(self.builder.allocator, cwd ++ "/lib");
+        const process_cwd = self.builder.pathFromRoot(ANDROID_PROJECT_PATH ++ "/out");
+        const walk_dir = self.builder.fmt("{s}/lib", .{process_cwd});
+        var it = try std.fs.walkPath(self.builder.allocator, walk_dir);
         defer it.deinit();
         while (try it.next()) |entry| {
             if (entry.kind == .File and std.mem.endsWith(u8, entry.path, ".so")) {
@@ -365,7 +380,7 @@ const AddLibsToApkStep = struct {
                     self.builder.allocator,
                 );
                 add_process.stdin_behavior = .Ignore;
-                add_process.cwd = cwd;
+                add_process.cwd = process_cwd;
                 _ = try add_process.spawnAndWait();
             }
         }
