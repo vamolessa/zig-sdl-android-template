@@ -127,20 +127,7 @@ pub fn buildAndroidMainLibrary(
     lib.strip = (mode == .ReleaseSmall);
 
     lib.setBuildMode(mode);
-
     lib.defineCMacro("ANDROID");
-
-    const include_dir = std.fs.path.resolve(
-        builder.allocator,
-        &[_][]const u8{ android_env.ndk_path, "sysroot/usr/include" },
-    ) catch unreachable;
-
-    const lib_dir = std.fs.path.resolve(
-        builder.allocator,
-        &[_][]const u8{ android_env.ndk_path, builder.fmt("platforms/android-{s}", .{android_env.platform_number}) },
-    ) catch unreachable;
-
-    lib.addIncludeDir(include_dir);
 
     lib.linkLibC();
     const app_libs = [_][]const u8{
@@ -216,16 +203,28 @@ pub fn buildAndroidMainLibrary(
 
     lib.setTarget(config.target);
 
-    lib.addIncludeDir("third-party/SDL2/include");
-    const android_lib_path = std.fs.path.resolve(
+    const include_dir = std.fs.path.resolve(
         builder.allocator,
-        &[_][]const u8{ "android-project/ndk-out/lib", config.out_dir },
+        &[_][]const u8{ android_env.ndk_path, "sysroot/usr/include" },
     ) catch unreachable;
-    lib.addLibPath(android_lib_path);
-    lib.linkSystemLibrary("SDL2");
+
+    const lib_dir = std.fs.path.resolve(
+        builder.allocator,
+        &[_][]const u8{ android_env.ndk_path, builder.fmt("platforms/android-{s}", .{android_env.platform_number}) },
+    ) catch unreachable;
+
+    lib.addIncludeDir(include_dir);
 
     lib.addLibPath(std.fs.path.resolve(builder.allocator, &[_][]const u8{ lib_dir, config.lib_dir }) catch unreachable);
     lib.addIncludeDir(std.fs.path.resolve(builder.allocator, &[_][]const u8{ include_dir, config.include_dir }) catch unreachable);
+
+    lib.addIncludeDir("third-party/SDL2/include");
+    const android_lib_path = builder.pathFromRoot(
+        builder.fmt(android.ANDROID_PROJECT_PATH ++ "/ndk-out/lib/{s}", .{config.out_dir}),
+    );
+
+    lib.addLibPath(android_lib_path);
+    lib.linkSystemLibrary("SDL2");
 
     lib.setLibCFile(config.libc_file);
 

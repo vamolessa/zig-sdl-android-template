@@ -1,7 +1,7 @@
 const std = @import("std");
 const builtin = @import("builtin");
 
-const ANDROID_PROJECT_PATH = "android-project";
+pub const ANDROID_PROJECT_PATH = "android-project";
 
 pub const AndroidEnv = struct {
     jdk_path: []u8,
@@ -78,9 +78,13 @@ pub fn buildApkStep(builder: *std.build.Builder, env: *const AndroidEnv, main_li
         &[_][]const u8{ env.jdk_path, "bin/jarsigner" },
     ) catch unreachable;
 
+    const aapt_ext = switch(builtin.os.tag) {
+        .windows => ".exe",
+        else => "",
+    };
     const aapt_exe = std.fs.path.resolve(
         builder.allocator,
-        &[_][]const u8{ env.build_tools_path, "aapt" },
+        &[_][]const u8{ env.build_tools_path, "aapt" ++ aapt_ext },
     ) catch unreachable;
 
     const dx_ext = switch(builtin.os.tag) {
@@ -106,7 +110,10 @@ pub fn buildApkStep(builder: *std.build.Builder, env: *const AndroidEnv, main_li
     const clean_step = builder.allocator.create(CleanStep) catch unreachable;
     clean_step.* = CleanStep.init(builder);
 
-    var create_r_java_log = builder.addLog("creating the R.java source from the resources inside the `res` folder", .{});
+    var create_r_java_log = builder.addLog(
+        "step 1: creating the R.java source from the resources inside the `res` folder\n",
+        .{},
+    );
     create_r_java_log.step.dependOn(&clean_step.step);
     var create_r_java_command = addCommand(builder, &[_][]const u8{
         aapt_exe,
@@ -123,7 +130,10 @@ pub fn buildApkStep(builder: *std.build.Builder, env: *const AndroidEnv, main_li
     });
     create_r_java_command.step.dependOn(&create_r_java_log.step);
 
-    var compile_java_log = builder.addLog("compiling all java sources inside the `java` folder into the `out` folder", .{});
+    var compile_java_log = builder.addLog(
+        "step 2: compiling all java sources inside the `java` folder into the `out` folder\n",
+        .{},
+    );
     compile_java_log.step.dependOn(&create_r_java_command.step);
     var javac_argv = std.ArrayList([]const u8).initCapacity(builder.allocator, 32) catch unreachable;
     javac_argv.append(javac_exe) catch unreachable;
@@ -149,7 +159,10 @@ pub fn buildApkStep(builder: *std.build.Builder, env: *const AndroidEnv, main_li
     var compile_java_command = addCommand(builder, javac_argv.items);
     compile_java_command.step.dependOn(&compile_java_log.step);
 
-    var compile_classes_dex_log = builder.addLog("converting all compiled java code into android vm compatible bytecode", .{});
+    var compile_classes_dex_log = builder.addLog(
+        "step 3: converting all compiled java code into android vm compatible bytecode\n",
+        .{},
+    );
     compile_classes_dex_log.step.dependOn(&compile_java_command.step);
     var compile_classes_dex_command = addCommand(builder, &[_][]const u8 {
         dx_exe,
@@ -160,7 +173,10 @@ pub fn buildApkStep(builder: *std.build.Builder, env: *const AndroidEnv, main_li
     });
     compile_classes_dex_command.step.dependOn(&compile_classes_dex_log.step);
 
-    var create_apk_log = builder.addLog("creating first version of the apk including all resources and asset files", .{});
+    var create_apk_log = builder.addLog(
+        "step 4: creating first version of the apk including all resources and asset files\n",
+        .{},
+    );
     create_apk_log.step.dependOn(&compile_classes_dex_command.step);
     var create_apk_command = addCommand(builder, &[_][]const u8 {
         aapt_exe,
@@ -179,7 +195,10 @@ pub fn buildApkStep(builder: *std.build.Builder, env: *const AndroidEnv, main_li
     });
     create_apk_command.step.dependOn(&create_apk_log.step);
 
-    var copy_sdl_libs_log = builder.addLog("copying all compiled SDL libraries to `out/lib/<target>`", .{});
+    var copy_sdl_libs_log = builder.addLog(
+        "step 5: copying all compiled SDL libraries to `out/lib/<target>`\n",
+        .{},
+    );
     copy_sdl_libs_log.step.dependOn(&create_apk_command.step);
     const copy_sdl_libs = builder.allocator.create(CopyDirStep) catch unreachable;
     copy_sdl_libs.* = CopyDirStep.init(
@@ -189,30 +208,34 @@ pub fn buildApkStep(builder: *std.build.Builder, env: *const AndroidEnv, main_li
     );
     copy_sdl_libs.step.dependOn(&copy_sdl_libs_log.step);
 
-    var copy_zig_libs_log = builder.addLog(
-        "copying all compiled zig libraries found to `out/lib/<target>` for each `AndroidTarget`",
+    var copy_main_libs_log = builder.addLog(
+        "step 6: copying all compiled zig libraries found to `out/lib/<target>` for each `AndroidTarget`\n",
         .{},
     );
-    copy_zig_libs_log.step.dependOn(&copy_sdl_libs.step);
+    copy_main_libs_log.step.dependOn(&copy_sdl_libs.step);
 
-    var last_copy_step = &copy_zig_libs_log.step;
+    const libs_dir = builder.pathFromRoot(ANDROID_PROJECT_PATH ++ "/out/lib");
+    var last_copy_step = &copy_main_libs_log.step;
     for (main_libs) |main_lib| {
-        const target_lib_dir = std.fs.path.resolve(
+        const target_lib_path = std.fs.path.resolve(
             builder.allocator,
-            &[_][]const u8{ builder.lib_dir, main_lib.target.name() },
+            &[_][]const u8{ libs_dir, main_lib.target.name(), "libmain.so" },
         ) catch unreachable;
 
-        const copy_zig_libs = builder.allocator.create(CopyDirStep) catch unreachable;
-        copy_zig_libs.* = CopyDirStep.init(
+        const copy_main_lib = builder.allocator.create(CopyLibStep) catch unreachable;
+        copy_main_lib.* = CopyLibStep.init(
             builder,
-            target_lib_dir,
-            ANDROID_PROJECT_PATH ++ "/out/lib",
+            main_lib.step,
+            target_lib_path,
         );
-        copy_zig_libs.step.dependOn(last_copy_step);
-        last_copy_step = &copy_zig_libs.step;
+        copy_main_lib.step.dependOn(last_copy_step);
+        last_copy_step = &copy_main_lib.step;
     }
 
-    var add_classes_dex_to_apk_log = builder.addLog("adding `classes.dex` to the apk", .{});
+    var add_classes_dex_to_apk_log = builder.addLog(
+        "step 7: adding `classes.dex` to the apk\n",
+        .{},
+    );
     add_classes_dex_to_apk_log.step.dependOn(last_copy_step);
     var add_classes_dex_to_apk_command = addCommand(builder, &[_][]const u8 {
         aapt_exe,
@@ -223,13 +246,19 @@ pub fn buildApkStep(builder: *std.build.Builder, env: *const AndroidEnv, main_li
     });
     add_classes_dex_to_apk_command.step.dependOn(&add_classes_dex_to_apk_log.step);
 
-    var add_libs_to_apk_log = builder.addLog("adding all libs inside `out/lib` to the apk", .{});
+    var add_libs_to_apk_log = builder.addLog(
+        "step 8: adding all libs inside `out/lib` to the apk\n",
+        .{},
+    );
     add_libs_to_apk_log.step.dependOn(&add_classes_dex_to_apk_command.step);
     const add_libs_to_apk = builder.allocator.create(AddLibsToApkStep) catch unreachable;
     add_libs_to_apk.* = AddLibsToApkStep.init(builder, aapt_exe);
     add_libs_to_apk.step.dependOn(&add_libs_to_apk_log.step);
 
-    var sign_apk_log = builder.addLog("signing apk", .{});
+    var sign_apk_log = builder.addLog(
+        "step 9: signing apk\n",
+        .{},
+    );
     sign_apk_log.step.dependOn(&add_libs_to_apk.step);
     var sign_apk_command = addCommand(builder, &[_][]const u8 {
         jarsigner_exe,
@@ -244,7 +273,10 @@ pub fn buildApkStep(builder: *std.build.Builder, env: *const AndroidEnv, main_li
     });
     sign_apk_command.step.dependOn(&sign_apk_log.step);
 
-    var align_apk_log = builder.addLog("aligning apk", .{});
+    var align_apk_log = builder.addLog(
+        "step 10: aligning apk\n",
+        .{},
+    );
     align_apk_log.step.dependOn(&sign_apk_command.step);
     var align_apk_command = addCommand(builder, &[_][]const u8 {
         zipalign_exe,
@@ -292,16 +324,22 @@ const CopyLibStep = struct {
     dest: []const u8,
 
     pub fn init(builder: *std.build.Builder, lib: *std.build.LibExeObjStep, dest: []const u8) CopyLibStep {
+        var step = std.build.Step.init(.Custom, builder.fmt("copying to {s}", .{dest}), builder.allocator, make);
+        step.dependOn(&lib.step);
         return CopyLibStep {
             .builder = builder,
-            .step = std.build.Step.init(.Custom, builder.fmt("copying to {s}", .{dest}), builder.allocator, make),
+            .step = step,
             .lib = lib,
             .dest = dest,
         };
     }
 
-    fn make(step: *std.build.Ste) !void {
+    fn make(step: *std.build.Step) !void {
         const self = @fieldParentPtr(CopyLibStep, "step", step);
+
+        const cwd = std.fs.cwd();
+        const source_path = self.lib.getOutputLibPath();
+        _ = try std.fs.Dir.updateFile(cwd, source_path, cwd, self.dest, .{});
     }
 };
 
