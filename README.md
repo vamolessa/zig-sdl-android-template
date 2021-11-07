@@ -2,12 +2,46 @@
 
 # getting started
 
+# requirements
+- JDK
+    - if you already have AndroidStudio installed, you can simply use the folder `<android-studio>/jre`
+    - otherwise, it is recommended to install Java 8 (I could be wrong, though)
+- Android SDK
+    - `platforms` (min `16`, latest recommended)
+    - `build-tools` with the same number as `platforms`
+    - `ndk` (a version that has a `platforms` subfolder as newer versions don't seem to come with?)
+    - `cmake` (needed to build SDL)
+
+You can install these components with some commands that look like these (or else use Android Studio to install them):
+```
+sdkmanager --install "platforms;android-28"
+sdkmanager --install "build-tools;28.0.2"
+sdkmanager --install "ndk;21.4.7075529"
+sdkmanager --install "cmake;3.18.1"
+
+# if not on path, you can invoke sdkmanager as `<android-sdk>/tools/bin/sdkmanager`
+```
+
 ## project structure
 
-//
+- `android-project`: where all android related files are. including build output
+    - `AndroidManifest.xml`: your android app manifest (more info bellow)
+    - `java`: java sources that interface with the android os. includes your app's MainActivity
+    - `jni`: project files that help build your dependencies (only SDL in this template) for android
+    - `keystore`: where you put your keystores. this template assumes that you'll generate a `debug.keystore` here (more info bellow)
+    - `res`: your android app resources files
+    - `out`: all intermediate and final apk build outputs. you'll find the final apk here (`app.apk`)
+    - `ndk-out`: build cache of your dependencies (only SDL in this template)
+- `assets`: home of all your game assets
+- `src`: zig (game) sources
+- `third-party`: your dependencies go here. in this template, there's only SDL2 there
+- `zig-libc-configs`: when cross-compiling, zig needs a libc config file that tells it where to find libc related folders (more info bellow)
+- `package.bat`: first version of the packaging pipeline. it's still there for easy reference of what's needed to generate an apk. however the real source of truth is `build.zig`
+- `build.zig`: general build scripts for this template
+- `build_android.zig`: android related build scripts for this template (used by `build.zig`)
 
 ## updating SDL
-This repository contains the latest SDL release as of writing this, which is 2.0.16.
+This repository contains the latest SDL release as of writing this, which is `2.0.16`.
 
 Updating SDL is a matter of replacing the contents of the `third-party/SDL2` folder.
 
@@ -25,17 +59,15 @@ If you plan on using any SDL extension (SDL_image, SDL_mixer, etc), it'd be a ma
 - link to them when building your zig main library (TODO)
 
 ## things to change/setup for your project
+- `zig-libc-configs`
+    - this folder contains libc configs for each android target
+    - it's very important to change the `crt_dir` field for each of those targets as it's dependent on your ndk installation and androi platform number
 - `android-project/AndroidManifest.xml`
     - package name in `manifest.package` (default: `com.gamemaker.game`)
     - any custom permission/user feature you'd like to add/remove (you can check out other manifests or even the one included with SDL)
     - main activity class name in `manifest/application/activity.android:name` (default: `MainActivity`)
 - `android-project/res/values/strings.xml`
     - app name
-- `android-project/jni/Application.mk`
-    - supported ABIs (default: only `arm64-v8a`)
-        - it seems there are some issues preventing zig to crosscompile to other ABIs. So we're only targeting `arm64-v8a` for now and should be easy to add them later by editing this file and our `build.zig`
-            - https://github.com/ziglang/zig/issues/8885
-            - https://github.com/ziglang/zig/issues/7935
 - `android-project/java/com/gamemaker/game/MainActivity.java`
     - java package (default: `com.gamemaker.game`).
         - NOTE: do not forget to also rename the folder struct to reflect the package name!
@@ -47,115 +79,66 @@ If you plan on using any SDL extension (SDL_image, SDL_mixer, etc), it'd be a ma
         - should be easy to change it to something else
         - but it's easier (only way?) to package the apk when everything is under a single folder
 
-----
+### generate keystore
+Use `keytool` that comes in JDK to generate your keystores.
+This template assumes the keystore file `android-project/keystore/debug.keystore` with `password` as its password.
+You can generate this file yourself with these commands:
 
-## desktop
-
-### compilar sdl
-Em geral não necessário pois já estamos commitando os `SDL2.dll` e `SDL2.lib`.
-De todo modo, basta executar o commando `zig build sdl` (precisa do compilador do visual studio `msbuild` instalado).
-
-
-## android
-
-### setup
-
-#### se ligar
-Tem application (package name) id em:
-- `android-project/app/build.gradle`
-- `android-project/app/src/main/AndroidManifest.xml`
-
-Tem umas coisas de ABI em:
-- `android-project/app/jni/Application.mk`
-- `android-project/app/build.gradle`
-
-Symlink da pasta do SDL
 ```
-mklink /J android-project\app\jni\SDL third-party\SDL2
-```
-
-Buildar bibliotecas (mas melhor não usar)
-```
-cd android-project\app\jni
-<android-sdk>\ndk\<ndk-version>\ndk-build
-```
-
-Gerar chave keystore
-```
-<java_home>\bin\keytool.exe -genkey -v -keystore debug.keystore -alias debugkey -keyalg RSA -keysize 2048 -validity 10000
-```
-
-Tem o arquivo `android-project/app/src/main/values/strings.xml` que contém o nome do jogo (e talvez deva conter mais coisa no futuro.
-
-#### com android studio
-- instala tudo que tá aí embaixo
-- abre o projeto no android studio
-- torce pra dar certo e 'make project'
-
-#### sem android studio
-NOTA: não funciona 100% infelizmente :(
-```
-scoop install android-sdk
-
-# sdkmanager --list # lista as coisas com suas respectivas versões
-# parece que não precisa sincronizar a versão do sdk com a do ndk
-#
-# mas se liga que a pasta do NDK *precisa* ter uma subpasta `platforms`
-
-sdkmanager --install "platforms;android-28"
-sdkmanager --install "build-tools;28.0.2"
-sdkmanager --install "ndk;21.4.7075529"
-```
-
-### packaging
-Antes de tudo, precisa compilar o projeto pra android (e depois empacotar tudo em apk).
-Pra isso:
-```
-# vai gerar 'zig-out\lib\<nome-do-projeto>.so'
-zig build android install
-```
-
-#### com android studio
-```
-set JAVA_HOME=<android-studio-install-path>\jre
 cd android-project
-gradlew assembleDebug
-
-# posteriormente pra gerar o apk de release
-android-project\gradlew assembleRelease
+mkdir keystore
+cd keystore
+<JDK_PATH>/bin/keytool -genkey -v -keystore debug.keystore -alias debugkey -keyalg RSA -keysize 2048 -validity 10000
 ```
 
-#### sem android studio
-NOTA: não funciona 100% infelizmente :(
+When submitting your app to a store, you'll want to also generate (and backup!) a `release.keystore`.
+
+### first build
+When doing the first apk build, you'll want to do things in this order:
+- generate debug keystore
+- `zig build sdl-android`
+- `zig build apk`
+
+That is because generating the keystore is an interactive process.
+Also, the `apk` step does not depend on `sdl-android` because even with caching, running `zig build sdl-android` takes
+a few seconds. Since it's a step that you'd re-run very rarely, I think it's fine to keep it separated.
+
+The following apk builds should be just a matter of repeating `zig build apk`
+and then testing the generated apk on a device or emulator.
+
+# testing the app
+## installing
 ```
-# empacotar o apk (como se adiciona as libs?)
-<android-sdk>\build-tools\28.0.2\aapt package -f -F app.apk -I <android-sdk>\platforms\android-28\android.jar -M android-project\app\src\main\AndroidManifest.xml -S android-project\app\src\main\res -v --target-sdk-version 28 -A assets
-
-# assinar o apk
-# https://developer.android.com/studio/command-line/apksigner
-<android-sdk>\build-tools\28.0.2\apksigner sign --ks <key> app.apk
-
-# instalar o apk
-<android-sdk>\platform-tools\adb install -r app.apk
-
-# desinstalar o apk
-<android-sdk>\platform-tools\adb uninstall <package-name>
-
-# ver logs do dispositivo
-<android-sdk>\platform-tools\adb logcat -s SDL/APP
-
-# rodar o apk
-<android-sdk>\platform-tools\adb shell am start -n org.libsdl.app/android.app.NativeActivity
+<android-sdk>/platform-tools/adb install -r android-project/out/app.apk
 ```
 
-Mais info: https://developer.android.com/studio/build/building-cmdline
+## uninstalling
+```
+<android-sdk>/platform-tools/adb uninstall com.gamemaker.game
+```
+NOTE: change `com.gamemaker.game` with your app package name.
 
+## device logs
+```
+<android-sdk>/platform-tools/adb logcat -s SDL/APP
+```
+NOTE: it's also possible to filter logs by doing something like this:
+```
+<android-sdk>/platform-tools/adb logcat | grep com.gamemaker.game
+```
 
-## construir apk na unha
-- https://stackoverflow.com/questions/41132753/how-can-i-build-an-android-apk-without-gradle-on-the-command-line
-- https://spin.atomicobject.com/2011/08/22/building-android-application-bundles-apks-by-hand/
-- https://github.com/WanghongLin/miscellaneous/blob/master/tools/build-apk-manually.sh
-- https://github.com/skanti/Android-Manual-Build-Command-Line
-- https://stackoverflow.com/questions/10199863/how-to-execute-the-dex-file-in-android-with-command
+## running
+```
+<android-sdk>/platform-tools/adb shell am start -n com.gamemaker.game/android.app.GameActivity
+```
+Where `com.gamemaker.game` should be your app's package name and `GameActivity` should be the name
+of the MainActivity class of your app.
+
+# references
+- https://developer.android.com/studio/build/building-cmdline
+- https://github.com/MasterQ32/ZigAndroidTemplate
 - https://www.apriorit.com/dev-blog/233-how-to-build-apk-file-from-command-line
+- https://spin.atomicobject.com/2011/08/22/building-android-application-bundles-apks-by-hand/
+- https://github.com/skanti/Android-Manual-Build-Command-Line
+- https://github.com/WanghongLin/miscellaneous/blob/master/tools/build-apk-manually.sh
 

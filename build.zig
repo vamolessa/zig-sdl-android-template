@@ -54,7 +54,6 @@ pub fn build(b: *std.build.Builder) void {
 
         // BUILD ANDROID
         const lib = buildAndroidMainLibraries(b, &android_env, mode);
-        lib.dependOn(sdl_android);
         const build_lib = b.step("android", "Build the main android library");
         build_lib.dependOn(lib);
 
