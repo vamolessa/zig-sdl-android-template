@@ -68,23 +68,23 @@ pub fn buildApkStep(builder: *std.build.Builder, env: *const AndroidEnv, main_li
     // - your project asset folder
 
     // all executable paths needed to create an apk
+    const exe_ext = switch(builtin.os.tag) {
+        .windows => ".exe",
+        else => "",
+    };
     const javac_exe = std.fs.path.resolve(
         builder.allocator,
-        &[_][]const u8{ env.jdk_path, "bin/javac" },
+        &[_][]const u8{ env.jdk_path, "bin/javac" ++ exe_ext },
     ) catch unreachable;
 
     const jarsigner_exe = std.fs.path.resolve(
         builder.allocator,
-        &[_][]const u8{ env.jdk_path, "bin/jarsigner" },
+        &[_][]const u8{ env.jdk_path, "bin/jarsigner" ++ exe_ext },
     ) catch unreachable;
 
-    const aapt_ext = switch(builtin.os.tag) {
-        .windows => ".exe",
-        else => "",
-    };
     const aapt_exe = std.fs.path.resolve(
         builder.allocator,
-        &[_][]const u8{ env.build_tools_path, "aapt" ++ aapt_ext },
+        &[_][]const u8{ env.build_tools_path, "aapt" ++ exe_ext },
     ) catch unreachable;
 
     const dx_ext = switch(builtin.os.tag) {
@@ -98,7 +98,7 @@ pub fn buildApkStep(builder: *std.build.Builder, env: *const AndroidEnv, main_li
 
     const zipalign_exe = std.fs.path.resolve(
         builder.allocator,
-        &[_][]const u8{ env.build_tools_path, "zipalign" },
+        &[_][]const u8{ env.build_tools_path, "zipalign" ++ exe_ext },
     ) catch unreachable;
 
     // other paths
@@ -168,7 +168,7 @@ pub fn buildApkStep(builder: *std.build.Builder, env: *const AndroidEnv, main_li
         dx_exe,
         "--dex",
         "--min-sdk-version=16",
-        "--ouput=out/classes.exe",
+        "--output=out/classes.dex",
         "out",
     });
     compile_classes_dex_command.step.dependOn(&compile_classes_dex_log.step);
@@ -237,13 +237,14 @@ pub fn buildApkStep(builder: *std.build.Builder, env: *const AndroidEnv, main_li
         .{},
     );
     add_classes_dex_to_apk_log.step.dependOn(last_copy_step);
-    var add_classes_dex_to_apk_command = addCommand(builder, &[_][]const u8 {
+    var add_classes_dex_to_apk_command = builder.addSystemCommand(&[_][]const u8 {
         aapt_exe,
         "add",
         "-f",
         "app.apk.unaligned",
         "classes.dex",
     });
+    add_classes_dex_to_apk_command.cwd = builder.pathFromRoot(ANDROID_PROJECT_PATH ++ "/out/lib");
     add_classes_dex_to_apk_command.step.dependOn(&add_classes_dex_to_apk_log.step);
 
     var add_libs_to_apk_log = builder.addLog(
@@ -309,11 +310,12 @@ const CleanStep = struct {
 
     fn make(step: *std.build.Step) !void {
         const self = @fieldParentPtr(CleanStep, "step", step);
-        const full_path = self.builder.pathFromRoot(ANDROID_PROJECT_PATH ++ "/out");
-        std.fs.cwd().deleteTree(full_path) catch |err| {
-            std.log.warn("Unable to remove {s}: {s}\n", .{ full_path, @errorName(err) });
+        const out_dir = self.builder.pathFromRoot(ANDROID_PROJECT_PATH ++ "/out");
+        std.fs.cwd().deleteTree(out_dir) catch |err| {
+            std.log.warn("Unable to remove {s}: {s}\n", .{ out_dir, @errorName(err) });
             return err;
         };
+        try std.fs.cwd().makeDir(out_dir);
     }
 };
 
@@ -365,6 +367,7 @@ const CopyDirStep = struct {
         const dest = self.builder.pathFromRoot(self.dest);
 
         var it = try std.fs.walkPath(self.builder.allocator, source);
+        defer it.deinit();
         while (try it.next()) |entry| {
             const rel_path = entry.path[source.len + 1 ..];
             const dest_path = try std.fs.path.join(self.builder.allocator, &[_][]const u8{dest, rel_path});
@@ -394,9 +397,8 @@ const AddLibsToApkStep = struct {
     fn make(step: *std.build.Step) !void {
         const self = @fieldParentPtr(AddLibsToApkStep, "step", step);
 
-        const process_cwd = self.builder.pathFromRoot(ANDROID_PROJECT_PATH ++ "/out");
-        const walk_dir = self.builder.fmt("{s}/lib", .{process_cwd});
-        var it = try std.fs.walkPath(self.builder.allocator, walk_dir);
+        const cwd = self.builder.pathFromRoot(ANDROID_PROJECT_PATH ++ "/out/lib");
+        var it = try std.fs.walkPath(self.builder.allocator, cwd);
         defer it.deinit();
         while (try it.next()) |entry| {
             if (entry.kind == .File and std.mem.endsWith(u8, entry.path, ".so")) {
@@ -418,7 +420,7 @@ const AddLibsToApkStep = struct {
                     self.builder.allocator,
                 );
                 add_process.stdin_behavior = .Ignore;
-                add_process.cwd = process_cwd;
+                add_process.cwd = cwd;
                 _ = try add_process.spawnAndWait();
             }
         }
