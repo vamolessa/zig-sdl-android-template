@@ -216,6 +216,7 @@ pub fn buildApkStep(builder: *std.build.Builder, env: *const AndroidEnv, main_li
 
     const libs_dir = builder.pathFromRoot(ANDROID_PROJECT_PATH ++ "/out/lib");
     var last_copy_step = &copy_main_libs_log.step;
+
     for (main_libs) |main_lib| {
         const target_lib_path = std.fs.path.resolve(
             builder.allocator,
@@ -244,7 +245,7 @@ pub fn buildApkStep(builder: *std.build.Builder, env: *const AndroidEnv, main_li
         "app.apk.unaligned",
         "classes.dex",
     });
-    add_classes_dex_to_apk_command.cwd = builder.pathFromRoot(ANDROID_PROJECT_PATH ++ "/out/lib");
+    add_classes_dex_to_apk_command.cwd = builder.pathFromRoot(ANDROID_PROJECT_PATH ++ "/out");
     add_classes_dex_to_apk_command.step.dependOn(&add_classes_dex_to_apk_log.step);
 
     var add_libs_to_apk_log = builder.addLog(
@@ -339,9 +340,11 @@ const CopyLibStep = struct {
     fn make(step: *std.build.Step) !void {
         const self = @fieldParentPtr(CopyLibStep, "step", step);
 
-        const cwd = std.fs.cwd();
         const source_path = self.lib.getOutputLibPath();
-        _ = try std.fs.Dir.updateFile(cwd, source_path, cwd, self.dest, .{});
+        _ = try std.fs.updateFileAbsolute(source_path, self.dest, .{});
+        //const cwd = std.fs.cwd();
+        //std.log.info("source path: {s}, dest: {s}", .{source_path, self.dest});
+        //_ = try std.fs.Dir.updateFile(cwd, source_path, cwd, self.dest, .{});
     }
 };
 
@@ -397,12 +400,14 @@ const AddLibsToApkStep = struct {
     fn make(step: *std.build.Step) !void {
         const self = @fieldParentPtr(AddLibsToApkStep, "step", step);
 
-        const cwd = self.builder.pathFromRoot(ANDROID_PROJECT_PATH ++ "/out/lib");
-        var it = try std.fs.walkPath(self.builder.allocator, cwd);
+        const process_cwd = self.builder.pathFromRoot(ANDROID_PROJECT_PATH ++ "/out");
+        const walker_cwd = self.builder.fmt("{s}/lib", .{process_cwd});
+
+        var it = try std.fs.walkPath(self.builder.allocator, walker_cwd);
         defer it.deinit();
         while (try it.next()) |entry| {
             if (entry.kind == .File and std.mem.endsWith(u8, entry.path, ".so")) {
-                var lib_path = self.builder.dupe(entry.path);
+                var lib_path = self.builder.dupe(entry.path[process_cwd.len + 1..]);
                 for (lib_path) |*byte| {
                     if (byte.* == '\\') {
                         byte.* = '/';
@@ -420,7 +425,7 @@ const AddLibsToApkStep = struct {
                     self.builder.allocator,
                 );
                 add_process.stdin_behavior = .Ignore;
-                add_process.cwd = cwd;
+                add_process.cwd = process_cwd;
                 _ = try add_process.spawnAndWait();
             }
         }
