@@ -34,6 +34,7 @@ pub fn main() anyerror!void {
     var rw = sdl.SDL_RWFromFile("images/gato.bmp", "rb");
     var imageSurface = sdl.SDL_LoadBMP_RW(rw, @boolToInt(true)) orelse {
         sdl.SDL_Log("could not load image");
+        return;
     };
     defer sdl.SDL_FreeSurface(imageSurface);
 

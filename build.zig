@@ -229,6 +229,7 @@ pub fn buildAndroidMainLibrary(
 
     lib.setLibCFile(config.libc_file);
 
+    //lib.setOutputDir("ops");
     lib.install();
 
     return &lib.step;

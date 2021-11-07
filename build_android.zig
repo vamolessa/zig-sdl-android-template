@@ -1,4 +1,5 @@
 const std = @import("std");
+const builtin = @import("builtin");
 
 const ANDROID_PROJECT_PATH = "android-project";
 
@@ -32,9 +33,13 @@ pub fn buildSdlForAndroidStep(builder: *std.build.Builder, env: *const AndroidEn
     // since not only you rarely need to rebuild SDL
     // but also because your zig main android lib links agains this output
 
+    const ndk_build_ext = switch(builtin.os.tag) {
+        .windows => ".cmd",
+        else => ".sh",
+    };
     const ndk_build_exe = std.fs.path.resolve(
         builder.allocator,
-        &[_][]const u8{ env.ndk_path, "ndk-build" },
+        &[_][]const u8{ env.ndk_path, "ndk-build" ++ ndk_build_ext },
     ) catch unreachable;
 
     var ndk_build_command = builder.addSystemCommand(&[_][]const u8{
@@ -73,9 +78,13 @@ pub fn buildApkStep(builder: *std.build.Builder, env: *const AndroidEnv) *std.bu
         &[_][]const u8{ env.build_tools_path, "aapt" },
     ) catch unreachable;
 
+    const dx_ext = switch(builtin.os.tag) {
+        .windows => ".bat",
+        else => ".sh",
+    };
     const dx_exe = std.fs.path.resolve(
         builder.allocator,
-        &[_][]const u8{ env.build_tools_path, "dx" },
+        &[_][]const u8{ env.build_tools_path, "dx" ++ dx_ext },
     ) catch unreachable;
 
     const zipalign_exe = std.fs.path.resolve(
