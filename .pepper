@@ -1,0 +1,19 @@
+# pepper editor (https://github.com/vamolessa/pepper) configs
+
+# uses space for indentation
+config indent_with_tabs false
+
+# automatically starts the zig lsp language server
+lsp-start "zls"
+
+# add syntax highlight for batch file comments
+syntax "**/.bat"
+syntax-comments [Rr][Ee][Mm]{.}
+
+# add some simple syntax highlight for xml files
+syntax "**/*.xml"
+syntax-symbols =
+syntax-strings [['{(\\)(\')!'.}|"{(\\)(\")!".}]]
+syntax-comments <%!--{!(-->).$}
+syntax-texts {%w-_}
+

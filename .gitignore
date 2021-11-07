@@ -1,0 +1,9 @@
+/zig-cache
+/zig-out
+
+/android-project/out
+/android-project/ndk-out
+/android-project/keystore
+
+vars.bat
+
