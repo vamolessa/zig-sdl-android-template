@@ -1,8 +1,18 @@
 # a zig sdl android app template
 
+This is a tutorial that will guide you how to build an Android application 'by hand' using
+- zig as the main programming language
+- SDL as the platform abstraction
+- zig build as automation
+
+We also cover what is the process of creating an apk from scratch. No AndroidStudio required.
+What you learn works for any language.
+
+Tested on Windows.
+
 # getting started
 
-# requirements
+## requirements
 - JDK
     - if you already have AndroidStudio installed, you can simply use the folder `<android-studio>/jre`
     - otherwise, it is recommended to install Java 8 (I could be wrong, though)
