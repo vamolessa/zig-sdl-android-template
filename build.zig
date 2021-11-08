@@ -48,7 +48,7 @@ pub fn build(b: *std.build.Builder) void {
         const android_env = getAndroidEnvFromEnvVars(b);
 
         // BUILD SDL FOR ANDROID
-        const sdl_android = android.buildSdlForAndroidStep(b, &android_env, );
+        const sdl_android = android.buildSdlForAndroidStep(b, &android_env);
         const build_sdl_android = b.step("sdl-android", "Build SDL for android using the Android SDK");
         build_sdl_android.dependOn(sdl_android);
 
@@ -63,6 +63,16 @@ pub fn build(b: *std.build.Builder) void {
         const apk = android.buildApkStep(b, &android_env, libs.items);
         const build_apk = b.step("apk", "Build the android apk (debug)");
         build_apk.dependOn(apk);
+
+        // INSTALL AND RUN APK
+        const run = android.installAndRunApkStep(b, &android_env, "com.gamemaker.game", "MainActivity");
+        const run_cmd = b.step("run-apk", "Install and run the previously built android apk");
+        run_cmd.dependOn(run);
+
+        // OPEN ANDROID LOG
+        const open_log = android.openAndroidLog(b, &android_env);
+        const open_log_cmd = b.step("android-log", "Open the android device log filtered to our application");
+        open_log_cmd.dependOn(open_log);
     }
 }
 
@@ -74,7 +84,7 @@ fn getAndroidEnvFromEnvVars(b: *std.build.Builder) android.AndroidEnv {
     // this example gets the needed paths from environment variables
     // however it's really up to you from where to get them
     // even hardcoding is fair game
-    return android.AndroidEnv {
+    return android.AndroidEnv{
         .jdk_path = getEnvVar(b, "JDK_PATH"),
         .sdk_path = getEnvVar(b, "ANDROID_SDK_PATH"),
         .platform_number = getEnvVar(b, "ANDROID_PLATFORM_NUMBER"),
@@ -88,7 +98,7 @@ pub fn buildAndroidMainLibraries(
     android_env: *const android.AndroidEnv,
     mode: std.builtin.Mode,
 ) std.ArrayList(android.AndroidMainLib) {
-    comptime var all_targets : [@typeInfo(android.AndroidTarget).Enum.fields.len]android.AndroidTarget = undefined;
+    comptime var all_targets: [@typeInfo(android.AndroidTarget).Enum.fields.len]android.AndroidTarget = undefined;
     inline for (@typeInfo(android.AndroidTarget).Enum.fields) |field, i| {
         all_targets[i] = @intToEnum(android.AndroidTarget, field.value);
     }

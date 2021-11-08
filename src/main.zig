@@ -8,10 +8,11 @@ const SCREEN_WIDTH = 480;
 const SCREEN_HEIGHT = 640;
 
 pub fn main() anyerror!void {
-    sdl.SDL_Log("================================================ SDL MAIN!");
+    std.log.info("starting app\n", .{});
 
     if (sdl.SDL_Init(sdl.SDL_INIT_VIDEO | sdl.SDL_INIT_AUDIO | sdl.SDL_INIT_EVENTS) != 0) {
-        std.debug.panic("could not initialize SDL", .{});
+        std.log.err("could not initialize SDL", .{});
+        return;
     }
     defer sdl.SDL_Quit();
 
@@ -22,18 +23,22 @@ pub fn main() anyerror!void {
         SCREEN_WIDTH,
         SCREEN_HEIGHT,
         0,
-    ) orelse std.debug.panic("could not create window", .{});
+    ) orelse {
+        std.log.err("could not create window", .{});
+        return;
+    };
+
     defer sdl.SDL_DestroyWindow(window);
 
     var windowSurface = sdl.SDL_GetWindowSurface(window);
     if (sdl.SDL_FillRect(windowSurface, null, sdl.SDL_MapRGB(windowSurface.*.format, 0xaa, 0xaa, 0xaa)) < 0) {
-        std.debug.panic("could not fill rect", .{});
+        std.log.err("could not fill rect", .{});
+        return;
     }
 
-    sdl.SDL_Log("before load");
     var rw = sdl.SDL_RWFromFile("images/gato.bmp", "rb");
     var imageSurface = sdl.SDL_LoadBMP_RW(rw, @boolToInt(true)) orelse {
-        sdl.SDL_Log("could not load image");
+        std.log.err("could not load image\n", .{});
         return;
     };
     defer sdl.SDL_FreeSurface(imageSurface);
@@ -44,10 +49,10 @@ pub fn main() anyerror!void {
             switch (event.type) {
                 sdl.SDL_QUIT => break :main_loop,
                 sdl.SDL_MOUSEBUTTONDOWN => {
-                    sdl.SDL_Log("mouse down");
+                    std.log.info("mouse down", .{});
                 },
                 sdl.SDL_MOUSEBUTTONUP => {
-                    sdl.SDL_Log("mouse up");
+                    std.log.info("mouse up", .{});
                 },
                 else => {},
             }
@@ -60,11 +65,13 @@ pub fn main() anyerror!void {
             .h = 0,
         };
         if (sdl.SDL_BlitSurface(imageSurface, null, windowSurface, &destRect) < 0) {
-            std.debug.panic("could not blit image", .{});
+            std.log.err("could not blit image", .{});
+            return;
         }
 
         if (sdl.SDL_UpdateWindowSurface(window) < 0) {
-            std.debug.panic("could not update window surface", .{});
+            std.log.err("could not update window surface", .{});
+            return;
         }
     }
 }

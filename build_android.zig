@@ -38,7 +38,7 @@ pub fn buildSdlForAndroidStep(builder: *std.build.Builder, env: *const AndroidEn
     // since not only you rarely need to rebuild SDL
     // but also because your zig main android lib links agains this output
 
-    const ndk_build_ext = switch(builtin.os.tag) {
+    const ndk_build_ext = switch (builtin.os.tag) {
         .windows => ".cmd",
         else => ".sh",
     };
@@ -68,7 +68,7 @@ pub fn buildApkStep(builder: *std.build.Builder, env: *const AndroidEnv, main_li
     // - your project asset folder
 
     // all executable paths needed to create an apk
-    const exe_ext = switch(builtin.os.tag) {
+    const exe_ext = switch (builtin.os.tag) {
         .windows => ".exe",
         else => "",
     };
@@ -87,7 +87,7 @@ pub fn buildApkStep(builder: *std.build.Builder, env: *const AndroidEnv, main_li
         &[_][]const u8{ env.build_tools_path, "aapt" ++ exe_ext },
     ) catch unreachable;
 
-    const dx_ext = switch(builtin.os.tag) {
+    const dx_ext = switch (builtin.os.tag) {
         .windows => ".bat",
         else => ".sh",
     };
@@ -164,7 +164,7 @@ pub fn buildApkStep(builder: *std.build.Builder, env: *const AndroidEnv, main_li
         .{},
     );
     compile_classes_dex_log.step.dependOn(&compile_java_command.step);
-    var compile_classes_dex_command = addCommand(builder, &[_][]const u8 {
+    var compile_classes_dex_command = addCommand(builder, &[_][]const u8{
         dx_exe,
         "--dex",
         "--min-sdk-version=16",
@@ -178,7 +178,7 @@ pub fn buildApkStep(builder: *std.build.Builder, env: *const AndroidEnv, main_li
         .{},
     );
     create_apk_log.step.dependOn(&compile_classes_dex_command.step);
-    var create_apk_command = addCommand(builder, &[_][]const u8 {
+    var create_apk_command = addCommand(builder, &[_][]const u8{
         aapt_exe,
         "package",
         "-f",
@@ -238,7 +238,7 @@ pub fn buildApkStep(builder: *std.build.Builder, env: *const AndroidEnv, main_li
         .{},
     );
     add_classes_dex_to_apk_log.step.dependOn(last_copy_step);
-    var add_classes_dex_to_apk_command = builder.addSystemCommand(&[_][]const u8 {
+    var add_classes_dex_to_apk_command = builder.addSystemCommand(&[_][]const u8{
         aapt_exe,
         "add",
         "-f",
@@ -262,7 +262,7 @@ pub fn buildApkStep(builder: *std.build.Builder, env: *const AndroidEnv, main_li
         .{},
     );
     sign_apk_log.step.dependOn(&add_libs_to_apk.step);
-    var sign_apk_command = addCommand(builder, &[_][]const u8 {
+    var sign_apk_command = addCommand(builder, &[_][]const u8{
         jarsigner_exe,
         "-keystore",
         "keystore/debug.keystore",
@@ -280,7 +280,7 @@ pub fn buildApkStep(builder: *std.build.Builder, env: *const AndroidEnv, main_li
         .{},
     );
     align_apk_log.step.dependOn(&sign_apk_command.step);
-    var align_apk_command = addCommand(builder, &[_][]const u8 {
+    var align_apk_command = addCommand(builder, &[_][]const u8{
         zipalign_exe,
         "-f",
         "4",
@@ -290,6 +290,62 @@ pub fn buildApkStep(builder: *std.build.Builder, env: *const AndroidEnv, main_li
     align_apk_command.step.dependOn(&align_apk_log.step);
 
     return &align_apk_command.step;
+}
+
+pub fn installAndRunApkStep(
+    builder: *std.build.Builder,
+    env: *const AndroidEnv,
+    package_name: []const u8,
+    main_activity_class_name: []const u8,
+) *std.build.Step {
+    const exe_ext = switch (builtin.os.tag) {
+        .windows => ".exe",
+        else => "",
+    };
+    const adb_exe = std.fs.path.resolve(
+        builder.allocator,
+        &[_][]const u8{ env.sdk_path, "platform-tools/adb" ++ exe_ext },
+    ) catch unreachable;
+
+    const install_apk = builder.addSystemCommand(&[_][]const u8{
+        adb_exe,
+        "install",
+        "-r",
+        ANDROID_PROJECT_PATH ++ "/out/app.apk",
+    });
+
+    var run_apk = builder.addSystemCommand(&[_][]const u8{
+        adb_exe,
+        "shell",
+        "am",
+        "start",
+        "-n",
+        builder.fmt("{s}/{s}.{s}", .{ package_name, package_name, main_activity_class_name }),
+    });
+    run_apk.step.dependOn(&install_apk.step);
+
+    return &run_apk.step;
+}
+
+pub fn openAndroidLog(builder: *std.build.Builder, env: *const AndroidEnv) *std.build.Step {
+    const exe_ext = switch (builtin.os.tag) {
+        .windows => ".exe",
+        else => "",
+    };
+    const adb_exe = std.fs.path.resolve(
+        builder.allocator,
+        &[_][]const u8{ env.sdk_path, "platform-tools/adb" ++ exe_ext },
+    ) catch unreachable;
+
+    const open_log = builder.addSystemCommand(&[_][]const u8{
+        adb_exe,
+        "logcat",
+        "-s",
+        "SDL",
+        "ZIG",
+    });
+
+    return &open_log.step;
 }
 
 fn addCommand(builder: *std.build.Builder, argv: []const []const u8) *std.build.RunStep {
@@ -329,7 +385,7 @@ const CopyLibStep = struct {
     pub fn init(builder: *std.build.Builder, lib: *std.build.LibExeObjStep, dest: []const u8) CopyLibStep {
         var step = std.build.Step.init(.Custom, builder.fmt("copying to {s}", .{dest}), builder.allocator, make);
         step.dependOn(&lib.step);
-        return CopyLibStep {
+        return CopyLibStep{
             .builder = builder,
             .step = step,
             .lib = lib,
@@ -357,7 +413,7 @@ const CopyDirStep = struct {
     pub fn init(builder: *std.build.Builder, source: []const u8, dest: []const u8) CopyDirStep {
         return CopyDirStep{
             .builder = builder,
-            .step = std.build.Step.init(.Custom, builder.fmt("copying {s} to {s}", .{source, dest}), builder.allocator, make),
+            .step = std.build.Step.init(.Custom, builder.fmt("copying {s} to {s}", .{ source, dest }), builder.allocator, make),
             .source = builder.dupe(source),
             .dest = builder.dupe(dest),
         };
@@ -373,7 +429,7 @@ const CopyDirStep = struct {
         defer it.deinit();
         while (try it.next()) |entry| {
             const rel_path = entry.path[source.len + 1 ..];
-            const dest_path = try std.fs.path.join(self.builder.allocator, &[_][]const u8{dest, rel_path});
+            const dest_path = try std.fs.path.join(self.builder.allocator, &[_][]const u8{ dest, rel_path });
 
             switch (entry.kind) {
                 .Directory => try std.fs.cwd().makePath(dest_path),
@@ -390,7 +446,7 @@ const AddLibsToApkStep = struct {
     aapt_exe: []const u8,
 
     fn init(builder: *std.build.Builder, aapt_exe: []const u8) AddLibsToApkStep {
-        return AddLibsToApkStep {
+        return AddLibsToApkStep{
             .step = std.build.Step.init(.InstallDir, "copying libs to apk", builder.allocator, make),
             .builder = builder,
             .aapt_exe = aapt_exe,
@@ -407,7 +463,7 @@ const AddLibsToApkStep = struct {
         defer it.deinit();
         while (try it.next()) |entry| {
             if (entry.kind == .File and std.mem.endsWith(u8, entry.path, ".so")) {
-                var lib_path = self.builder.dupe(entry.path[process_cwd.len + 1..]);
+                var lib_path = self.builder.dupe(entry.path[process_cwd.len + 1 ..]);
                 for (lib_path) |*byte| {
                     if (byte.* == '\\') {
                         byte.* = '/';

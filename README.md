@@ -68,6 +68,8 @@ If you plan on using any SDL extension (SDL_image, SDL_mixer, etc), it'd be a ma
 - link to them when building your zig main library (TODO)
 
 ## things to change/setup for your project
+- `build.zig`
+    - edit the `android.installAndRunApkStep(...)` call to pass it the correct package name and main activity class name
 - `zig-libc-configs`
     - this folder contains libc configs for each android target
     - it's very important to change the `crt_dir` field for each of those targets as it's dependent on your ndk installation and androi platform number
@@ -164,8 +166,9 @@ NOTE: change `com.gamemaker.game` with your app package name.
 
 ## device logs
 ```
-<android-sdk>/platform-tools/adb logcat -s SDL/APP
+<android-sdk>/platform-tools/adb logcat -s SDL SDL/APP
 ```
+
 NOTE: it's also possible to filter logs by doing something like this:
 ```
 <android-sdk>/platform-tools/adb logcat | grep com.gamemaker.game
@@ -173,10 +176,17 @@ NOTE: it's also possible to filter logs by doing something like this:
 
 ## running
 ```
-<android-sdk>/platform-tools/adb shell am start -n com.gamemaker.game/android.app.GameActivity
+<android-sdk>/platform-tools/adb shell am start -n com.gamemaker.game/com.gamemaker.game.MainActivity
 ```
-Where `com.gamemaker.game` should be your app's package name and `GameActivity` should be the name
+Where `com.gamemaker.game` should be your app's package name and `MainActivity` should be the name
 of the MainActivity class of your app.
+
+### using zig build
+It's also possible to install and run using `zig build` with:
+```
+zig build run-apk
+```
+Remember to edit your `build.zig` to match your final package name and main activity class name!
 
 # references
 - https://developer.android.com/studio/build/building-cmdline
