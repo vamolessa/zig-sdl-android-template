@@ -176,3 +176,8 @@ of the MainActivity class of your app.
 - https://github.com/skanti/Android-Manual-Build-Command-Line
 - https://github.com/WanghongLin/miscellaneous/blob/master/tools/build-apk-manually.sh
 
+# support
+If you found this tutorial/template useful, please consider donating to help me create further tutorials :)
+I'll be forever grateful :)
+
+<a href="https://liberapay.com/lessa/donate"><img alt="Donate using Liberapay" src="https://liberapay.com/assets/widgets/donate.svg"></a>
