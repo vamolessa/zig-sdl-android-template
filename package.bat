@@ -18,6 +18,17 @@ set ANDROID_NDK=%ANDROID_SDK%\ndk\%ANDROID_NDK_VERSION%
 
 pushd android-project
 
+rem BUILD SDL FOR ANDROID
+pushd jni
+call "%ANDROID_NDK%\ndk-build" NDK_LIBS_OUT=../ndk-out/lib NDK_OUT=../ndk-out/out
+popd
+
+rem HERE YOU'D BUILD YOUR APPLICATION AS A `libmain.so` TO BE LOADED FROM YOUR MainActivity
+rem I'VE PUT THIS `zig build` COMMAND HERE MERELY AS AN EXAMPLE SINCE WE'VE MOVED FROM THIS `package.bat`
+rem TO FULLY BUILDING THE APK FROM `build.zig`
+zig build android
+
+rem BUILD APK
 rmdir /s /q out
 mkdir out
 
@@ -29,11 +40,10 @@ call "%ANDROID_BUILDTOOLS%\dx" --dex --min-sdk-version=16 --output=out/classes.d
 
 "%ANDROID_BUILDTOOLS%\aapt" package -f -M AndroidManifest.xml -S res -I "%ANDROID_PLATFORM%\android.jar" -A ../assets -F out/app.apk.unaligned
 
-pushd jni
-call "%ANDROID_NDK%\ndk-build" NDK_LIBS_OUT=../ndk-out/lib NDK_OUT=../ndk-out/out
-popd
-
 xcopy /e /i ndk-out\lib out\lib
+
+rem SINCE WE MOVED TO CREATING THE APK FROM THE `build.zig`, `libmain.so` IS LOCATED INSIDE `zig-cache` WITH A NON STABLE PATH
+rem HERE YOU'D FIND `libmain.so` AND COPY IT TO `android-project\out\lib\<target>\libmain.so`
 copy ..\zig-out\lib\libmain.so out\lib\arm64-v8a\libmain.so
 
 pushd out

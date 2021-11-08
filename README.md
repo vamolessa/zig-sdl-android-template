@@ -23,7 +23,6 @@ sdkmanager --install "cmake;3.18.1"
 ```
 
 ## project structure
-
 - `android-project`: where all android related files are. including build output
     - `AndroidManifest.xml`: your android app manifest (more info bellow)
     - `java`: java sources that interface with the android os. includes your app's MainActivity
@@ -62,6 +61,7 @@ If you plan on using any SDL extension (SDL_image, SDL_mixer, etc), it'd be a ma
 - `zig-libc-configs`
     - this folder contains libc configs for each android target
     - it's very important to change the `crt_dir` field for each of those targets as it's dependent on your ndk installation and androi platform number
+    - in future versions of zig, it will be possible to auto-generate these from `build.zig`
 - `android-project/AndroidManifest.xml`
     - package name in `manifest.package` (default: `com.gamemaker.game`)
     - any custom permission/user feature you'd like to add/remove (you can check out other manifests or even the one included with SDL)
@@ -105,6 +105,40 @@ a few seconds. Since it's a step that you'd re-run very rarely, I think it's fin
 
 The following apk builds should be just a matter of repeating `zig build apk`
 and then testing the generated apk on a device or emulator.
+
+# steps to create an apk
+Here is an overview of all the steps needed to create a working apk that uses native code:
+
+- compile all dependencies targeting android
+    - for SDL this means invoking `ndk-build` that uses the `Application.mk` and `Android.mk` to generate its native libs
+- compile your code targeting android linking against those dependencies artifacts
+    - for zig, we do this inside `build.zig`
+- generate `R.java` inside the `out` folder by invoking `aapt` found in Android SDK build-tools folder
+- compile any java code using `javac` that comes with the JDK
+    - using the `android.jar` found in the Android SDK as `-classpath`;
+    - targeting java `7` by passing `1.7` to both `-target` and `-source`; and
+    - passing the `java:out` argument kinda means that we're taking java source from the `java` folder and outputing the compiled code to the `out` folder
+- convert the compiled java code to Android VM compatible bytecode by using `dx` also in the Android SDK build-tools folder
+    - we pass it `--min-sdk-version=16` which is the minimum required for an application to load native code (from what I understand)
+    - it will generate a `classes.dex` in the `out` folder
+- create the first version of out apk by calling `aapt` again
+    - we actually generate a `app.apk.unaligned` to make it clear that it is not final
+    - it's also here where we push the `assets` folder into the apk
+- call `aapt add` to add the `classes.dex` converted previously into the apk
+    - as a quirk, the path inside the apk an added file has is *exactly* the same as the argument passed to the command
+    - because of this, we must invoke the tool from a folder where it lets us pass the file as an argument with the correct path
+        - that is, in the case of `classes.dex`, we must change to the folder containing the file since `classes.dex` must reside in the root of the apk
+- call `aapt add` for every native library we previously built for android
+    - all lib files must be inside a `lib` folder
+    - even further, it must be inside a `lib/<target>` folder where `<target>` means the target the lib was compiled against
+    - for example, if you build your `libmain.so` for `arm64-v8a` which is a pretty common android target, the final path inside the apk must be `lib\arm64-v8a\libmain.so`
+- sign the apk using `jarsigner` found in the JDK
+    - NOTE: you must provide a previously created keystore and its password for it to work
+    - please refer to the previous `### generate keystore` section
+- align the apk using `zipalign` found in the Android SDK build-tools folder
+    - note that we pass the final file name to the command which is finally `app.apk`, our ready to be installed apk!
+- finally you can send it to your device using `adb install` found in the Android SDK `platform-tools` folder
+    - please refer to the `## installing` section bellow
 
 # testing the app
 ## installing
