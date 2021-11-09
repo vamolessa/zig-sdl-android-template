@@ -43,6 +43,8 @@ sdkmanager --install "cmake;3.18.1"
     - `ndk-out`: build cache of your dependencies (only SDL in this template)
 - `assets`: home of all your game assets
 - `src`: zig (game) sources
+    - `src/main.zig`: the main application code where assets are loaded, images are displayed on screen and input is processed
+    - `src/android_main.zig`: android specific code, like the main function exported to `libmain.so` and also a simple log routing
 - `third-party`: your dependencies go here. in this template, there's only SDL2 there
 - `zig-libc-configs`: when cross-compiling, zig needs a libc config file that tells it where to find libc related folders (more info bellow)
 - `package.bat`: first version of the packaging pipeline. it's still there for easy reference of what's needed to generate an apk. however the real source of truth is `build.zig`
@@ -201,4 +203,3 @@ If you found this tutorial/template useful, please consider donating to help me 
 I'll be forever grateful :)
 
 <a href="https://liberapay.com/lessa/donate"><img alt="Donate using Liberapay" src="https://liberapay.com/assets/widgets/donate.svg"></a>
-[![ko-fi](https://ko-fi.com/img/githubbutton_sm.svg)](https://ko-fi.com/K3K86X3RD)
