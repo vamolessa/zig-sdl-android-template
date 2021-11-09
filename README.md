@@ -201,3 +201,4 @@ If you found this tutorial/template useful, please consider donating to help me 
 I'll be forever grateful :)
 
 <a href="https://liberapay.com/lessa/donate"><img alt="Donate using Liberapay" src="https://liberapay.com/assets/widgets/donate.svg"></a>
+[![ko-fi](https://ko-fi.com/img/githubbutton_sm.svg)](https://ko-fi.com/K3K86X3RD)
