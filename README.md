@@ -1,12 +1,12 @@
 # a zig sdl android app template
 
 This is a tutorial that will guide you how to build an Android application 'by hand' using
-- zig as the main programming language
+- Zig as the main programming language
 - SDL as the platform abstraction
-- zig build as automation
+- `zig build` as build automation
 
 We also cover what is the process of creating an apk from scratch. No AndroidStudio required.
-What you learn works for any language.
+Also, the process for creating APKs applies for pretty much any language that can talk C.
 
 Tested on Windows.
 
