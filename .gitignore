@@ -1,5 +1,6 @@
 /zig-cache
 /zig-out
+/zig-libc-configs
 
 /android-project/out
 /android-project/ndk-out

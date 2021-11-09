@@ -2,6 +2,7 @@ const std = @import("std");
 const builtin = @import("builtin");
 
 pub const ANDROID_PROJECT_PATH = "android-project";
+pub const ZIG_LIBC_CONFIGS_DIR_PATH = "zig-libc-configs";
 
 pub const AndroidEnv = struct {
     jdk_path: []u8,
@@ -17,12 +18,75 @@ pub const AndroidTarget = enum {
     x86,
     x86_64,
 
+    const Config = struct {
+        lib_dir: []const u8,
+        include_dir: []const u8,
+        out_dir: []const u8,
+        libc_file: []const u8,
+        target: std.zig.CrossTarget,
+    };
+
     fn name(self: AndroidTarget) []const u8 {
         return switch (self) {
             .aarch64 => "arm64-v8a",
             .arm => "armeabi",
             .x86 => "x86",
             .x86_64 => "x86_64",
+        };
+    }
+
+    pub fn config(self: AndroidTarget) Config {
+        return switch (self) {
+            .aarch64 => Config{
+                .lib_dir = "arch-arm64/usr/lib",
+                .include_dir = "aarch64-linux-android",
+                .out_dir = "arm64-v8a",
+                .libc_file = ZIG_LIBC_CONFIGS_DIR_PATH ++ "/aarch64-libc.conf",
+                .target = std.zig.CrossTarget{
+                    .cpu_arch = .aarch64,
+                    .os_tag = .linux,
+                    .abi = .android,
+                    .cpu_model = .baseline,
+                    .cpu_features_add = std.Target.aarch64.featureSet(&.{.v8a}),
+                },
+            },
+            .arm => Config{
+                .lib_dir = "arch-arm/usr/lib",
+                .include_dir = "arm-linux-androideabi",
+                .out_dir = "armeabi",
+                .libc_file = ZIG_LIBC_CONFIGS_DIR_PATH ++ "/arm-libc.conf",
+                .target = std.zig.CrossTarget{
+                    .cpu_arch = .arm,
+                    .os_tag = .linux,
+                    .abi = .android,
+                    .cpu_model = .baseline,
+                    .cpu_features_add = std.Target.arm.featureSet(&.{.v7a}),
+                },
+            },
+            .x86 => Config{
+                .lib_dir = "arch-x86/usr/lib",
+                .include_dir = "i686-linux-android",
+                .out_dir = "x86",
+                .libc_file = ZIG_LIBC_CONFIGS_DIR_PATH ++ "/x86-libc.conf",
+                .target = std.zig.CrossTarget{
+                    .cpu_arch = .i386,
+                    .os_tag = .linux,
+                    .abi = .android,
+                    .cpu_model = .baseline,
+                },
+            },
+            .x86_64 => Config{
+                .lib_dir = "arch-x86_64/usr/lib64",
+                .include_dir = "x86_64-linux-android",
+                .out_dir = "x86_64",
+                .libc_file = ZIG_LIBC_CONFIGS_DIR_PATH ++ "/x86_64-libc.conf",
+                .target = std.zig.CrossTarget{
+                    .cpu_arch = .x86_64,
+                    .os_tag = .linux,
+                    .abi = .android,
+                    .cpu_model = .baseline,
+                },
+            },
         };
     }
 };
@@ -57,6 +121,56 @@ pub fn buildSdlForAndroidStep(builder: *std.build.Builder, env: *const AndroidEn
     ndk_build_command.cwd = builder.pathFromRoot(ANDROID_PROJECT_PATH ++ "/jni");
 
     return &ndk_build_command.step;
+}
+
+pub fn assertZigLibcConfigsDirExist(builder: *std.build.Builder, env: *const AndroidEnv) void {
+    // asset that `ZIG_LIBC_CONFIGS_DIR_PATH` directory exists in project root
+    // which should contain libc config files for each android target
+    // these are used when building the main zig android lib
+    //
+    // in future versions of zig, it will be possible to generate them
+    // in a build step. for now, we generate them if the folder does not
+    // exist on any `zig build` invocation
+
+    const libc_configs_path = builder.pathFromRoot(ZIG_LIBC_CONFIGS_DIR_PATH);
+    std.fs.makeDirAbsolute(libc_configs_path) catch return;
+    const libc_configs_dir = std.fs.openDirAbsolute(libc_configs_path, .{}) catch unreachable;
+
+    comptime var all_targets: [@typeInfo(AndroidTarget).Enum.fields.len]AndroidTarget = undefined;
+    inline for (@typeInfo(AndroidTarget).Enum.fields) |field, i| {
+        all_targets[i] = @intToEnum(AndroidTarget, field.value);
+    }
+
+    const empty_path = switch(builtin.os.tag) {
+        .windows => "C:\\",
+        else => "",
+    };
+
+    for (all_targets) |target| {
+        const config = target.config();
+        const path = config.libc_file[ZIG_LIBC_CONFIGS_DIR_PATH.len + 1..];
+
+        const content = builder.fmt(
+            \\include_dir={s}
+            \\sys_include_dir={s}
+            \\crt_dir={s}/platforms/android-{s}/{s}
+            \\msvc_lib_dir={s}
+            \\kernel32_lib_dir={s}
+            \\gcc_dir={s}
+            , .{
+                config.include_dir,
+                config.include_dir,
+                env.ndk_path,
+                env.platform_number,
+                config.lib_dir,
+                empty_path,
+                empty_path,
+                empty_path,
+            },
+        );
+
+        libc_configs_dir.writeFile(path, content) catch continue;
+    }
 }
 
 pub fn buildApkStep(builder: *std.build.Builder, env: *const AndroidEnv, main_libs: []const AndroidMainLib) *std.build.Step {

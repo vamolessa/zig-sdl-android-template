@@ -98,6 +98,10 @@ pub fn buildAndroidMainLibraries(
     android_env: *const android.AndroidEnv,
     mode: std.builtin.Mode,
 ) std.ArrayList(android.AndroidMainLib) {
+    // steps to generate a libmain.so for all supported android platforms
+
+    android.assertZigLibcConfigsDirExist(builder, android_env);
+
     comptime var all_targets: [@typeInfo(android.AndroidTarget).Enum.fields.len]android.AndroidTarget = undefined;
     inline for (@typeInfo(android.AndroidTarget).Enum.fields) |field, i| {
         all_targets[i] = @intToEnum(android.AndroidTarget, field.value);
@@ -129,6 +133,8 @@ pub fn buildAndroidMainLibrary(
     mode: std.builtin.Mode,
     target: android.AndroidTarget,
 ) *std.build.LibExeObjStep {
+    // steps to generate a libmain.so for a specific android platform
+
     const lib = builder.addSharedLibrary("main", "src/android_main.zig", .unversioned);
 
     lib.force_pic = true;
@@ -147,70 +153,7 @@ pub fn buildAndroidMainLibrary(
         lib.linkSystemLibraryName(l);
     }
 
-    const android_os = .linux;
-    const android_abi = .android;
-
-    const TargetConfig = struct {
-        lib_dir: []const u8,
-        include_dir: []const u8,
-        out_dir: []const u8,
-        libc_file: []const u8,
-        target: std.zig.CrossTarget,
-    };
-
-    const config: TargetConfig = switch (target) {
-        .aarch64 => TargetConfig{
-            .lib_dir = "arch-arm64/usr/lib",
-            .include_dir = "aarch64-linux-android",
-            .out_dir = "arm64-v8a",
-            .libc_file = "zig-libc-configs/aarch64-libc.conf",
-            .target = std.zig.CrossTarget{
-                .cpu_arch = .aarch64,
-                .os_tag = android_os,
-                .abi = android_abi,
-                .cpu_model = .baseline,
-                .cpu_features_add = std.Target.aarch64.featureSet(&.{.v8a}),
-            },
-        },
-        .arm => TargetConfig{
-            .lib_dir = "arch-arm/usr/lib",
-            .include_dir = "arm-linux-androideabi",
-            .out_dir = "armeabi",
-            .libc_file = "zig-libc-configs/arm-libc.conf",
-            .target = std.zig.CrossTarget{
-                .cpu_arch = .arm,
-                .os_tag = android_os,
-                .abi = android_abi,
-                .cpu_model = .baseline,
-                .cpu_features_add = std.Target.arm.featureSet(&.{.v7a}),
-            },
-        },
-        .x86 => TargetConfig{
-            .lib_dir = "arch-x86/usr/lib",
-            .include_dir = "i686-linux-android",
-            .out_dir = "x86",
-            .libc_file = "zig-libc-configs/x86-libc.conf",
-            .target = std.zig.CrossTarget{
-                .cpu_arch = .i386,
-                .os_tag = android_os,
-                .abi = android_abi,
-                .cpu_model = .baseline,
-            },
-        },
-        .x86_64 => TargetConfig{
-            .lib_dir = "arch-x86_64/usr/lib64",
-            .include_dir = "x86_64-linux-android",
-            .out_dir = "x86_64",
-            .libc_file = "zig-libc-configs/x86_64-libc.conf",
-            .target = std.zig.CrossTarget{
-                .cpu_arch = .x86_64,
-                .os_tag = android_os,
-                .abi = android_abi,
-                .cpu_model = .baseline,
-            },
-        },
-    };
-
+    const config = target.config();
     lib.setTarget(config.target);
 
     const include_dir = std.fs.path.resolve(
