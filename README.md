@@ -15,7 +15,7 @@ Tested on Windows.
 ## requirements
 - JDK
     - if you already have AndroidStudio installed, you can simply use the folder `<android-studio>/jre`
-    - otherwise, it is recommended to install Java 8 (I could be wrong, though)
+    - otherwise, you should install latest openjdk (`scoop install openjdk` should work)
 - Android SDK
     - `platforms` (min `16`, latest recommended)
     - `build-tools` with the same number as `platforms`
